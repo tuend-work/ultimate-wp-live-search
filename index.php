@@ -3,7 +3,7 @@
 Plugin Name: Ultimate WP Live Search
 Plugin URI: https://laptrinhweb.net
 Description: Plugin hỗ trợ tìm kiếm trực tiếp (Live Search) với tốc độ cao bằng cách sử dụng cache file JSON.
-Version: 1.0.6
+Version: 1.0.9	
 Author: Nguyễn Đức Tuệ
 Author URI: https://laptrinhweb.net
 */
@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
 
 define('UWLS_URL', plugin_dir_url(__FILE__));
 define('UWLS_PATH', plugin_dir_path(__FILE__));
-define('UWLS_VERSION', '1.0.6');
+define('UWLS_VERSION', '1.0.9');
 
 // Khởi tạo Class
 add_action('plugins_loaded', function() {
@@ -265,7 +265,7 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 								var allData = [...(data.post || []), ...(data.product || [])];
 
 								$(selector).each(function() {
-									$(this).autocomplete({
+									var autocompleteInstance = $(this).autocomplete({
 										delay: 10,
 										source: function(request, response) {
 											var words = request.term.toLowerCase().split(' ').filter(w => w !== '');
@@ -279,8 +279,45 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 										select: function(event, ui) {
 											window.open(ui.item.url, '_blank');
 											return false;
+										},
+										open: function(event, ui) {
+											var searchForm = $('li.header-search-form');
+											if (searchForm.length > 0 && $(window).width() <= 1024) {
+												$(this).data("ui-autocomplete").menu.element.css("left", searchForm.offset().left);
+											}
 										}
-									}).data("ui-autocomplete")._renderItem = function(ul, item) {
+									}).data("ui-autocomplete");
+
+									// Căn chỉnh width trên mobile/ipad bằng với form ngoài
+									autocompleteInstance._resizeMenu = function() {
+										var ul = this.menu.element;
+										var searchForm = $('li.header-search-form');
+										if (searchForm.length > 0 && $(window).width() <= 1024) {
+											ul.outerWidth(searchForm.outerWidth());
+										} else {
+											ul.outerWidth(Math.max(
+												ul.width("").outerWidth() + 1,
+												this.element.outerWidth()
+											));
+										}
+									};
+
+									// Ngăn chặn đóng popup khi người dùng right-click hoặc tương tác (đưa chuột vào popup)
+									autocompleteInstance.menu.element.on('mouseenter', function() {
+										autocompleteInstance.uwlsPreventClose = true;
+									}).on('mouseleave', function() {
+										autocompleteInstance.uwlsPreventClose = false;
+									});
+
+									var originalClose = autocompleteInstance.close;
+									autocompleteInstance.close = function(event) {
+										if (this.uwlsPreventClose) {
+											return; // Bỏ qua việc đóng menu
+										}
+										originalClose.apply(this, arguments);
+									};
+
+									autocompleteInstance._renderItem = function(ul, item) {
 										var words = this.element.val().split(' ').filter(w => w !== '');
 										var displayTitle = item.title;
 										var displaySku = item.sku ? item.sku : '';
@@ -306,14 +343,12 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 										return $("<li>")
 											.append(`
 												<a href="${item.url}" target="_blank" class="uwls-item">
-													<div class="uwls-left">
-														<div class="uwls-thumb-wrapper">
-															<img src="${thumbnail}" class="uwls-thumb">
-														</div>
-														<div class="uwls-info">
-															<div class="uwls-title">${displayTitle}</div>
-															${skuHTML}
-														</div>
+													<div class="uwls-thumb-wrapper">
+														<img src="${thumbnail}" class="uwls-thumb">
+													</div>
+													<div class="uwls-info">
+														<div class="uwls-title">${displayTitle}</div>
+														${skuHTML}
 													</div>
 													${priceHTML}
 												</a>
@@ -338,6 +373,8 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 						max-height: 500px !important;
 						overflow-y: auto !important;
 						margin-top: 8px !important;
+						box-sizing: border-box !important;
+						max-width: 100vw !important;
 					}
 
 					.ui-autocomplete::-webkit-scrollbar {
@@ -361,20 +398,14 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 						text-decoration: none !important;
 						color: #333 !important;
 						border-radius: 8px !important;
-						transition: all 0.2s ease-in-out !important;
+						box-sizing: border-box !important;
+						width: 100% !important;
 					}
 
 					.ui-state-active, .ui-widget-content .ui-state-active {
 						background: rgba(52, 152, 219, 0.08) !important;
 						border: 1px solid rgba(52, 152, 219, 0.2) !important;
 						margin: 0 !important;
-					}
-
-					.uwls-left {
-						display: flex;
-						align-items: center;
-						flex: 1;
-						min-width: 0;
 					}
 
 					.uwls-thumb-wrapper {
@@ -397,6 +428,9 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 					.uwls-info {
 						flex: 1;
 						min-width: 0;
+						display: flex;
+						flex-direction: column;
+						justify-content: center;
 					}
 
 					.uwls-title {
@@ -453,6 +487,33 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 						padding: 0 !important;
 						border: none !important;
 						background: transparent !important;
+					}
+
+					/* Responsive Mobile */
+					@media (max-width: 768px) {
+						.uwls-item {
+							display: grid !important;
+							grid-template-columns: 50px 1fr;
+							grid-template-rows: auto auto;
+							column-gap: 15px;
+							align-items: center !important;
+						}
+						.uwls-thumb-wrapper {
+							grid-column: 1;
+							grid-row: 1 / span 2;
+							height: 70px;
+							margin-right: 0;
+						}
+						.uwls-info {
+							grid-column: 2;
+							grid-row: 1;
+						}
+						.uwls-price-group {
+							grid-column: 2;
+							grid-row: 2;
+							margin-left: 0 !important;
+							margin-top: 4px;
+						}
 					}
 				</style>
 			<?php
