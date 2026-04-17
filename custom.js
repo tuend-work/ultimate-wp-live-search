@@ -1,16 +1,16 @@
 /**
- * Ultimate WP Live Search - Admin Scripts
- * This script handles the "Create Data" functionality in the WordPress admin.
+ * Ultimate WP Live Search - Admin Scripts (v1.0.3)
  */
-// Load SweetAlert2 via CDN if not already loaded
-if (typeof Swal === 'undefined') {
-    document.write('<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/limonte-sweetalert2/10.13.3/sweetalert2.min.js"></script>');
-    document.write('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/limonte-sweetalert2/10.13.3/sweetalert2.min.css">');
-}
-
 jQuery(document).ready(function($) {
     // Handle click on "Tạo dữ liệu" (Create Data) button
-    $('.uwls-btn-create-cache').click(function() {
+    $('.uwls-btn-create-cache').on('click', function(e) {
+        e.preventDefault();
+        
+        if (typeof Swal === 'undefined') {
+            alert('Thư viện SweetAlert2 chưa được tải. Vui lòng F5 trang.');
+            return;
+        }
+
         Swal.fire({
             title: 'Tạo dữ liệu',
             text: 'Bạn chắc chắn muốn thực hiện thao tác này?',
@@ -22,62 +22,50 @@ jQuery(document).ready(function($) {
             cancelButtonText: 'Hủy'
         }).then((result) => {
             if (result.isConfirmed) {
-                // Perform AJAX request to create search data
+                console.log('Sending AJAX to:', uwls_js.url);
                 $.ajax({
                     url: uwls_js.url,
                     type: 'POST',
                     dataType: 'json',
                     data: {
-                        action: 'create_data_search'
+                        action: 'uwls_do_create_data',
+                        nonce: uwls_js.nonce
                     },
                     beforeSend: function() {
-                        // Global loading spinner function (defined in index.php)
                         if (typeof loading_snipper === 'function') {
                             loading_snipper(true);
                         }
                     },
                     success: function(response) {
+                        console.log('Response:', response);
                         if (response.success) {
-                            let timerInterval;
                             Swal.fire({
                                 icon: 'success',
                                 title: response.data.message,
-                                html: 'Trang sẽ được tải lại sau <b>5</b> giây để hoàn tất',
-                                timer: 5000,
-                                timerProgressBar: true,
-                                didOpen: () => {
-                                    Swal.showLoading();
-                                    const b = Swal.getHtmlContainer().querySelector('b');
-                                    timerInterval = setInterval(() => {
-                                        b.textContent = (Swal.getTimerLeft() / 1000).toFixed(0);
-                                    }, 1000);
-                                },
-                                willClose: () => {
-                                    clearInterval(timerInterval);
-                                }
-                            }).then((result) => {
-                                // Reload page to update the data file path in footer
-                                if (typeof loading_snipper === 'function') {
-                                    loading_snipper(false);
-                                }
+                                text: 'Trang sẽ tự động tải lại...',
+                                timer: 2000,
+                                showConfirmButton: false
+                            }).then(() => {
                                 location.reload();
                             });
                         } else {
                             Swal.fire({
                                 icon: 'error',
-                                title: 'Oops...',
-                                text: 'Đã có lỗi xảy ra!'
+                                title: 'Lỗi',
+                                text: response.data.message || 'Đã có lỗi xảy ra!'
                             });
                             if (typeof loading_snipper === 'function') {
                                 loading_snipper(false);
                             }
                         }
                     },
-                    error: function(error) {
+                    error: function(xhr, status, error) {
+                        console.error('AJAX Error:', status, error);
+                        console.log('XHR Response:', xhr.responseText);
                         Swal.fire({
                             icon: 'error',
                             title: 'Oops...',
-                            text: 'Đã có lỗi xảy ra!'
+                            text: 'Lỗi kết nối (400/500). Vui lòng kiểm tra console hoặc thử Lưu cài đặt trước.'
                         });
                         if (typeof loading_snipper === 'function') {
                             loading_snipper(false);
