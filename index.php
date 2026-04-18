@@ -3,7 +3,7 @@
 Plugin Name: Ultimate WP Live Search
 Plugin URI: https://laptrinhweb.net
 Description: Plugin hỗ trợ tìm kiếm trực tiếp (Live Search) với tốc độ cao bằng cách sử dụng cache file JSON.
-Version: 1.0.9	
+Version: 1.1.0	
 Author: Nguyễn Đức Tuệ
 Author URI: https://laptrinhweb.net
 */
@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
 
 define('UWLS_URL', plugin_dir_url(__FILE__));
 define('UWLS_PATH', plugin_dir_path(__FILE__));
-define('UWLS_VERSION', '1.0.9');
+define('UWLS_VERSION', '1.1.0');
 
 // Khởi tạo Class
 add_action('plugins_loaded', function() {
@@ -281,7 +281,7 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 											return false;
 										},
 										open: function(event, ui) {
-											var searchForm = $('li.header-search-form');
+											var searchForm = $('ul.nav.header-bottom-nav.nav-center.mobile-nav.nav-prompts-overlay li.header-search-form');
 											if (searchForm.length > 0 && $(window).width() <= 1024) {
 												$(this).data("ui-autocomplete").menu.element.css("left", searchForm.offset().left);
 											}
@@ -291,7 +291,7 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 									// Căn chỉnh width trên mobile/ipad bằng với form ngoài
 									autocompleteInstance._resizeMenu = function() {
 										var ul = this.menu.element;
-										var searchForm = $('li.header-search-form');
+										var searchForm = $('ul.nav.header-bottom-nav.nav-center.mobile-nav.nav-prompts-overlay li.header-search-form');
 										if (searchForm.length > 0 && $(window).width() <= 1024) {
 											ul.outerWidth(searchForm.outerWidth());
 										} else {
