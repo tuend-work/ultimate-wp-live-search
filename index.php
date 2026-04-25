@@ -3,7 +3,7 @@
 Plugin Name: Ultimate WP Live Search
 Plugin URI: https://laptrinhweb.net
 Description: Plugin hỗ trợ tìm kiếm trực tiếp (Live Search) với tốc độ cao bằng cách sử dụng cache file JSON.
-Version: 1.2.1	
+Version: 1.2.4	
 Author: Nguyễn Đức Tuệ
 Author URI: https://laptrinhweb.net
 */
@@ -12,7 +12,7 @@ defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
 
 define('UWLS_URL', plugin_dir_url(__FILE__));
 define('UWLS_PATH', plugin_dir_path(__FILE__));
-define('UWLS_VERSION', '1.1.0');
+define('UWLS_VERSION', '1.2.4;
 
 // Khởi tạo Class
 add_action('plugins_loaded', function() {
@@ -276,8 +276,8 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 						if (selector && file) {
 							console.log('UWLS DEBUG: Initializing search...');
 							
-							// Helper xóa dấu tiếng Việt
-							var removeAccents = function(str) {
+							// Helper xóa dấu tiếng Việt và khoảng trắng
+							var normalizeStr = function(str, removeSpace = false) {
 								str = str.toLowerCase();
 								str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
 								str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
@@ -286,6 +286,9 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 								str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
 								str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
 								str = str.replace(/đ/g, "d");
+								if (removeSpace) {
+									str = str.replace(/\s+/g, "");
+								}
 								return str;
 							};
 
@@ -310,13 +313,21 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 										delay: 10,
 										source: function(request, response) {
 											console.log('UWLS DEBUG: Searching for:', request.term);
-											var termNormalized = removeAccents(request.term);
-											var words = termNormalized.split(' ').filter(w => w !== '');
+											var words = request.term.split(' ').filter(w => w !== '');
 											
 											var results = allData.filter(item => {
-												var titleNormalized = removeAccents(item.title);
-												var skuNormalized = removeAccents(item.sku || '');
-												return words.every(word => titleNormalized.includes(word) || skuNormalized.includes(word));
+												var titleClean = normalizeStr(item.title);
+												var titleNoSpace = normalizeStr(item.title, true);
+												var skuClean = normalizeStr(item.sku || '');
+												var skuNoSpace = normalizeStr(item.sku || '', true);
+
+												return words.every(word => {
+													var wordClean = normalizeStr(word);
+													return titleClean.includes(wordClean) || 
+														   titleNoSpace.includes(wordClean) || 
+														   skuClean.includes(wordClean) || 
+														   skuNoSpace.includes(wordClean);
+												});
 											});
 											console.log('UWLS DEBUG: Results found:', results.length);
 											response(results.slice(0, 10));
@@ -358,14 +369,17 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 										var words = this.element.val().split(' ').filter(w => w !== '');
 										var displayTitle = item.title;
 										var displaySku = item.sku ? item.sku : '';
-										words.forEach(word => {
-											if (word) {
-												displayTitle = displayTitle.replace(new RegExp("(" + word + ")", "gi"), "<mark>$1</mark>");
-												if (displaySku) {
-													displaySku = displaySku.replace(new RegExp("(" + word + ")", "gi"), "<mark>$1</mark>");
-												}
+										
+										if (words.length > 0) {
+											// Tạo regex tìm kiếm tất cả các từ, tránh tìm trong thẻ HTML
+											var pattern = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+											var regex = new RegExp("(?![^<]*>)(" + pattern + ")", "gi");
+											
+											displayTitle = displayTitle.replace(regex, "<mark>$1</mark>");
+											if (displaySku) {
+												displaySku = displaySku.replace(regex, "<mark>$1</mark>");
 											}
-										});
+										}
 
 										var skuHTML = displaySku ? `<div class="uwls-sku">SKU: ${displaySku}</div>` : '';
 
