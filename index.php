@@ -73,6 +73,7 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 			register_setting($this->plugin_slug, $this->option_name, array( $this, 'sanitize' ));
 			add_settings_section('uwls_section', 'CẤU HÌNH', false, $this->plugin_slug);
 			add_settings_field('uwls_selector', 'ID / Class ô tìm kiếm', [$this, 'uwls_selector_html'], $this->plugin_slug, 'uwls_section');
+			add_settings_field('uwls_post_types', 'Chọn loại bài viết', [$this, 'uwls_post_types_html'], $this->plugin_slug, 'uwls_section');
 			add_settings_field('uwls_button_create', 'Tạo dữ liệu', [$this, 'uwls_button_create_html'], $this->plugin_slug, 'uwls_section');
 			add_settings_field('uwls_support', 'Liên hệ hỗ trợ', [$this, 'uwls_support_html'], $this->plugin_slug, 'uwls_section');
 		}
@@ -123,6 +124,28 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 			);
 		}
 
+		public function uwls_post_types_html() {
+			$options = get_option($this->option_name);
+			$selected_types = isset($options['uwls_post_types']) ? (array)$options['uwls_post_types'] : array('post', 'product');
+			
+			$args = array(
+				'public'   => true,
+				'_builtin' => false
+			);
+			$output = 'names'; // names or objects, note names is the default
+			$operator = 'and'; // 'and' or 'or'
+			$post_types = get_post_types($args, $output, $operator);
+			
+			$builtin_types = array('post' => 'Bài viết', 'page' => 'Trang');
+			$all_types = array_merge($builtin_types, (array)$post_types);
+
+			foreach ($all_types as $slug => $label) {
+				if ($slug == 'attachment') continue;
+				$checked = in_array($slug, $selected_types) ? 'checked' : '';
+				echo '<label style="margin-right:15px"><input type="checkbox" name="'.$this->option_name.'[uwls_post_types][]" value="'.$slug.'" '.$checked.'> '.$label.'</label>';
+			}
+		}
+
 		public function uwls_button_create_html() {
 			echo '<a href="javascript:;" class="button uwls-btn-create-cache">Tạo dữ liệu</a>';
 		}
@@ -152,76 +175,63 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 				wp_send_json_error(['message' => 'Bạn không có quyền thực hiện']);
 			}
 
-			// Lấy bài viết (Posts)
-			$posts = get_posts(array(
-				'posts_per_page' => -1,
-				'post_type' => array('post'),
-				'orderby'   => 'ID',
-        		'order' => 'ASC',
-				'fields' => 'ids',
-			));
-			
-			$data_post = [];
-			foreach($posts as $post) {
-				$data_post[] = [
-					'title' => get_the_title($post),
-					'url' => get_permalink($post),
-					'thumbnail' => get_the_post_thumbnail_url($post),
-					'reg_price' => '',
-					'sale_price' => '',
-					'sku' => ''
-				];
-			}
+			$options = get_option($this->option_name);
+			$selected_types = isset($options['uwls_post_types']) ? (array)$options['uwls_post_types'] : array('post', 'product');
 
-			// Lấy sản phẩm (Products)
-			$products = get_posts(array(
-				'posts_per_page' => -1,
-				'post_type' => array('product'),
-				'orderby'   => 'ID',
-        		'order' => 'ASC',
-				'fields' => 'ids',
-			));
+			$data_all = [];
 
-			$data_product = [];
-			foreach($products as $product_id) {
-				$reg_price = '';
-				$sale_price = '';
-				$sku = '';
+			foreach ($selected_types as $post_type) {
+				$args = array(
+					'posts_per_page' => -1,
+					'post_type'      => array($post_type),
+					'orderby'        => 'ID',
+					'order'          => 'ASC',
+					'fields'         => 'ids',
+				);
+				
+				$items = get_posts($args);
+				$type_data = [];
 
-				if(function_exists('wc_get_product')) {
-					$product = wc_get_product($product_id);
-					if($product) {
-						$sku = $product->get_sku();
-						if($product->is_type('variable')) {
-							$reg_price = strip_tags($product->get_variation_regular_price('min', true));
-							$sale_price = strip_tags($product->get_variation_sale_price('min', true));
+				foreach ($items as $item_id) {
+					$entry = [
+						'title'     => get_the_title($item_id),
+						'url'       => get_permalink($item_id),
+						'thumbnail' => get_the_post_thumbnail_url($item_id),
+						'reg_price' => '',
+						'sale_price' => '',
+						'sku'       => ''
+					];
+
+					// Xử lý riêng cho sản phẩm WooCommerce
+					if ($post_type === 'product') {
+						if (function_exists('wc_get_product')) {
+							$product = wc_get_product($item_id);
+							if ($product) {
+								$entry['sku'] = $product->get_sku();
+								if ($product->is_type('variable')) {
+									$entry['reg_price'] = strip_tags($product->get_variation_regular_price('min', true));
+									$entry['sale_price'] = strip_tags($product->get_variation_sale_price('min', true));
+								} else {
+									$entry['reg_price'] = strip_tags(wc_price($product->get_regular_price()));
+									$entry['sale_price'] = strip_tags(wc_price($product->get_sale_price()));
+								}
+
+								if (empty($entry['sale_price']) || $entry['sale_price'] == $entry['reg_price']) {
+									$entry['sale_price'] = strip_tags(wc_price($product->get_price()));
+									$entry['reg_price'] = '';
+								}
+							}
 						} else {
-							$reg_price = strip_tags(wc_price($product->get_regular_price()));
-							$sale_price = strip_tags(wc_price($product->get_sale_price()));
+							$entry['sale_price'] = get_post_meta($item_id, '_price', true);
+							$entry['sku'] = get_post_meta($item_id, '_sku', true);
 						}
-
-                        // Nếu không có giá khuyến mãi, chỉ lấy giá chính
-                        if (empty($sale_price) || $sale_price == $reg_price) {
-                            $sale_price = strip_tags(wc_price($product->get_price()));
-                            $reg_price = '';
-                        }
 					}
-				} else {
-					$sale_price = get_post_meta($product_id, '_price', true);
-					$sku = get_post_meta($product_id, '_sku', true);
+
+					$type_data[] = $entry;
 				}
 
-				$data_product[] = [
-					'title' => get_the_title($product_id),
-					'url' => get_permalink($product_id),
-					'thumbnail' => get_the_post_thumbnail_url($product_id),
-					'reg_price' => $reg_price,
-					'sale_price' => $sale_price,
-					'sku' => $sku
-				];
+				$data_all[$post_type] = $type_data;
 			}
-
-			$data_all = ['post' => $data_post, 'product' => $data_product];
 
 			$new_file = 'data-'.time().'.json';
 			$json_file = UWLS_PATH.$new_file;
