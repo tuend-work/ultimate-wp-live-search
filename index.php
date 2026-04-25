@@ -3,7 +3,7 @@
 Plugin Name: Ultimate WP Live Search
 Plugin URI: https://laptrinhweb.net
 Description: Plugin hỗ trợ tìm kiếm trực tiếp (Live Search) với tốc độ cao bằng cách sử dụng cache file JSON.
-Version: 1.1.0	
+Version: 1.2.1	
 Author: Nguyễn Đức Tuệ
 Author URI: https://laptrinhweb.net
 */
@@ -83,7 +83,11 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 			$sanitized_input = [];
 			if(is_array($input)) {
 				foreach($input as $key => $item) {
-					$sanitized_input[$key] = sanitize_text_field($item);
+					if (is_array($item)) {
+						$sanitized_input[$key] = array_map('sanitize_text_field', $item);
+					} else {
+						$sanitized_input[$key] = sanitize_text_field($item);
+					}
 				}
 			}
 			return $sanitized_input;
@@ -270,20 +274,51 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 						var file = '<?php echo esc_url($file) ?>';
 
 						if (selector && file) {
-							console.log('UWLS: Initializing search...');
+							console.log('UWLS DEBUG: Initializing search...');
+							
+							// Helper xóa dấu tiếng Việt
+							var removeAccents = function(str) {
+								str = str.toLowerCase();
+								str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+								str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+								str = str.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+								str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+								str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+								str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+								str = str.replace(/đ/g, "d");
+								return str;
+							};
+
+							console.log('UWLS DEBUG: Selector: ', selector);
+							console.log('UWLS DEBUG: Data file: ', file);
+
 							$.getJSON(file, function(data) {
-								var allData = [...(data.post || []), ...(data.product || [])];
+								console.log('UWLS DEBUG: Data loaded successfully:', data);
+								
+								// Gộp tất cả các loại post type lại thành một mảng duy nhất để search
+								var allData = [];
+								Object.keys(data).forEach(function(key) {
+									if (Array.isArray(data[key])) {
+										allData = allData.concat(data[key]);
+									}
+								});
+
+								console.log('UWLS DEBUG: Total items for search:', allData.length);
 
 								$(selector).each(function() {
 									var autocompleteInstance = $(this).autocomplete({
 										delay: 10,
 										source: function(request, response) {
-											var words = request.term.toLowerCase().split(' ').filter(w => w !== '');
+											console.log('UWLS DEBUG: Searching for:', request.term);
+											var termNormalized = removeAccents(request.term);
+											var words = termNormalized.split(' ').filter(w => w !== '');
+											
 											var results = allData.filter(item => {
-												var title = item.title.toLowerCase();
-												var sku = (item.sku || '').toLowerCase();
-												return words.every(word => title.includes(word) || sku.includes(word));
+												var titleNormalized = removeAccents(item.title);
+												var skuNormalized = removeAccents(item.sku || '');
+												return words.every(word => titleNormalized.includes(word) || skuNormalized.includes(word));
 											});
+											console.log('UWLS DEBUG: Results found:', results.length);
 											response(results.slice(0, 10));
 										},
 										select: function(event, ui) {
@@ -298,18 +333,10 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 										}
 									}).data("ui-autocomplete");
 
-									// Căn chỉnh width trên mobile/ipad bằng với form ngoài
+									// Căn chỉnh width luôn bằng với thanh search
 									autocompleteInstance._resizeMenu = function() {
 										var ul = this.menu.element;
-										var searchForm = $('ul.nav.header-bottom-nav.nav-center.mobile-nav.nav-prompts-overlay li.header-search-form');
-										if (searchForm.length > 0 && $(window).width() <= 1024) {
-											ul.outerWidth(searchForm.outerWidth());
-										} else {
-											ul.outerWidth(Math.max(
-												ul.width("").outerWidth() + 1,
-												this.element.outerWidth()
-											));
-										}
+										ul.outerWidth(this.element.outerWidth());
 									};
 
 									// Ngăn chặn đóng popup khi người dùng right-click hoặc tương tác (đưa chuột vào popup)
@@ -448,9 +475,8 @@ if(!class_exists('Ultimate_WP_Live_Search')) {
 						font-weight: 500;
 						color: #2c3e50;
 						line-height: 1.4;
-						white-space: nowrap;
-						overflow: hidden;
-						text-overflow: ellipsis;
+						white-space: normal; /* Cho phép xuống dòng */
+						word-break: break-word;
 					}
 
 					.uwls-sku {
